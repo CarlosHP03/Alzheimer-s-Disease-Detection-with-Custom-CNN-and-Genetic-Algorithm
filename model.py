@@ -82,7 +82,7 @@ class ImageClassifier:
         """
         early_stop = EarlyStopping(monitor="val_loss", patience=13, restore_best_weights=True)
 
-        base_dir = "models2"
+        base_dir = f"models"
         if class_weights:
             # Calculate class weights
             class_weight = compute_class_weight(
@@ -117,11 +117,11 @@ class ImageClassifier:
                 model_dir = os.path.join(base_dir, f"{self.base_model_name}_data_augmentation")
                 filepath = os.path.join(model_dir, f"{self.base_model_name}_data_augmentation.h5")
             else:
-                model_dir = os.path.join(base_dir, f"{self.base_model_name}.h5")
+                model_dir = os.path.join(base_dir, f"{self.base_model_name}")
                 filepath = os.path.join(model_dir, f"{self.base_model_name}.h5")
 
-            os.makedirs(model_dir, exist_ok=True)  # Create directories if they don't exist
-            self.model.save(filepath)
+        os.makedirs(model_dir, exist_ok=True)  # Create directories if they don't exist
+        self.model.save(filepath)
 
         return history
 
@@ -176,7 +176,7 @@ class ImageClassifier:
                  horizontalalignment='center', verticalalignment='center',
                  transform=plt.gca().transAxes, fontsize=12)
 
-        base_dir = "graphs2"
+        base_dir = f"graphs"
         if class_weights:
             model_dir = os.path.join(base_dir, f"{self.base_model_name}_with_weights")
         elif augment:
@@ -212,7 +212,7 @@ class ImageClassifier:
                  horizontalalignment='center', verticalalignment='center',
                  transform=plt.gca().transAxes, fontsize=12)
 
-        base_dir = "graphs2"
+        base_dir = f"graphs"
         if class_weights:
             model_dir = os.path.join(base_dir, f"{self.base_model_name}_with_weights")
         elif augment:
