@@ -2,8 +2,8 @@ from image_data_handler import ImageDataHandler
 from model import ImageClassifier
 
 # Define data paths, hyperparameters
-EPOCHS = 2
-TARGET_SIZE = (32, 32)
+EPOCHS = 15
+TARGET_SIZE = (120, 120)
 BATCH_SIZE = 32
 KERNEL_SIZE = (3, 3)
 MODEL = "ResNet50"
