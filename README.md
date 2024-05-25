@@ -8,4 +8,4 @@ Some Description.
 
 ## Dataset
 
-Some Description.
+The data used in this project is available from Kaggle at the OASIS Alzheimer's Detection dataset (https://www.kaggle.com/datasets/ninadaithal/imagesoasis).
