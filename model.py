@@ -1,5 +1,6 @@
+from keras import Sequential
 from keras.applications import VGG16, InceptionV3, ResNet50
-from keras.layers import Dense, GlobalAveragePooling2D
+from keras.layers import Dense, GlobalAveragePooling2D, Activation, Flatten, MaxPooling2D, Conv2D
 from keras.models import Model
 from keras.callbacks import EarlyStopping
 import numpy as np
@@ -13,9 +14,216 @@ import os
 
 class ImageClassifier:
     """
-    This class defines a basic image classification model using pre-trained models.
+    This class defines a basic image classifier for training and evaluation.
     """
+    def __init__(self, input_shape, num_classes=2, activation="sigmoid"):
+        """
+        Initializer for the base ImageClassifier class.
 
+        Args:
+            input_shape: The input shape for the model (e.g., (120, 120, 3)).
+            num_classes: The number of output classes (default: 2).
+            activation: The activation function for the final layer (default: sigmoid).
+        """
+        self.input_shape = input_shape
+        self.num_classes = num_classes
+        self.activation = activation
+        self.model = None  # Placeholder for the model
+
+    def _build_model(self):
+        """
+        Abstract method to be implemented by child classes to define the model architecture.
+        """
+        raise NotImplementedError("Subclasses must implement _build_model() method")
+
+    def train(self, train_data, validation_data, epochs, step_size_train, step_size_val, class_weights=True,
+              augment=True, base_model_name="VGG16"):
+        """
+        Trains the model on the provided data.
+
+        Args:
+            train_data: A Keras ImageDataGenerator object for training data.
+            validation_data: A Keras ImageDataGenerator object for validation data.
+            epochs: The number of training epochs.
+            class_weights: If TRUE, will calculate class weights.
+            augment: Was data augmentation performed in the image handler(default: True).
+            step_size_train:.
+            step_size_val:.
+
+        """
+        early_stop = EarlyStopping(monitor="val_loss", patience=13, restore_best_weights=True)
+
+        base_dir = f"models"
+        if class_weights:
+            # Calculate class weights
+            class_weight = compute_class_weight(
+                class_weight="balanced",
+                classes=np.unique(train_data.classes),
+                y=train_data.classes
+            )
+
+            weights = {0: class_weight[0], 1: class_weight[1]}
+            history = self.model.fit(
+                train_data,
+                steps_per_epoch=step_size_train,
+                epochs=epochs,
+                validation_data=validation_data,
+                validation_steps=step_size_val,
+                class_weight=weights,
+                callbacks=[early_stop],
+            )
+            model_dir = os.path.join(base_dir, f"{base_model_name}_with_weights")
+            filepath = os.path.join(model_dir, f"{base_model_name}_with_weights.h5")
+
+        else:
+            history = self.model.fit(
+                train_data,
+                steps_per_epoch=step_size_train,
+                epochs=epochs,
+                validation_data=validation_data,
+                validation_steps=step_size_val,
+                callbacks=[early_stop],
+            )
+            if augment:
+                model_dir = os.path.join(base_dir, f"{base_model_name}_data_augmentation")
+                filepath = os.path.join(model_dir, f"{base_model_name}_data_augmentation.h5")
+            else:
+                model_dir = os.path.join(base_dir, f"{base_model_name}")
+                filepath = os.path.join(model_dir, f"{base_model_name}.h5")
+
+        os.makedirs(model_dir, exist_ok=True)  # Create directories if they don't exist
+        self.model.save(filepath)
+
+        return history
+
+    def evaluate(self, val_data, step_size):
+        """
+        Evaluates the model on the provided data.
+
+        Args:
+            val_data: A Keras ImageDataGenerator object for validation data.
+            step_size: A Keras ImageDataGenerator object for validation data.
+
+        Returns:
+            The evaluation metrics from the model.
+        """
+        return self.model.evaluate(val_data,
+                                   steps=step_size)
+
+    def test(self, test_generator, step_size_test):
+        # Predicting the test data
+        prediction = self.model.predict(test_generator,
+                                        steps=step_size_test,
+                                        verbose=1)
+        return prediction
+
+    def plot_training_performance(self, history, class_weights=True, augment=True, base_model_name="VGG16"):
+        acc = history.history["accuracy"]
+        val_acc = history.history["val_accuracy"]
+        loss = history.history["loss"]
+        val_loss = history.history["val_loss"]
+        num_epochs = len(history.history['loss'])
+
+        # Plotting how the validation and training accuracy was changing with the epochs when the model was training
+        plt.figure(figsize=(15, 15))
+        plt.subplot(2, 2, 1)
+        plt.plot(range(num_epochs), acc, label="Training Accuracy")
+        plt.plot(range(num_epochs), val_acc, label="Validation Accuracy")
+        plt.legend(loc="lower right")
+        plt.title("Training and Validation Accuracy")
+
+        # Plotting how the validation and training loss was changing with the epochs when the model was training
+        plt.subplot(2, 2, 2)
+        plt.plot(range(num_epochs), loss, label="Training Loss")
+        plt.plot(range(num_epochs), val_loss, label="Validation Loss")
+        plt.legend(loc="upper right")
+        plt.title("Training and Validation Loss")
+
+        # Add the F1 score as text annotation to the plots
+        plt.subplot(2, 2, 4)
+        plt.text(0.5, 0.5, f'Training Acc: {acc[0]}'
+                           f'\n\n Val Acc: {val_acc[0]}\n\n Training Loss: {loss[0]}'
+                           f'\n\n Val Loss: {val_loss[0]}\n\n',
+                 horizontalalignment='center', verticalalignment='center',
+                 transform=plt.gca().transAxes, fontsize=12)
+
+        base_dir = f"graphs"
+        if class_weights:
+            model_dir = os.path.join(base_dir, f"{base_model_name}_with_weights")
+        elif augment:
+            model_dir = os.path.join(base_dir, f"{base_model_name}_data_augmentation")
+        else:
+            model_dir = os.path.join(base_dir, f"{base_model_name}")
+
+        os.makedirs(model_dir, exist_ok=True)  # Create directories if they don't exist
+        filepath = os.path.join(model_dir, "training_validation_graphs.png")
+
+        plt.savefig(filepath)
+        plt.show()
+
+    def evaluation_metrics(self, prediction, test_generator, class_weights=True, augment=True, base_model_name="VGG16"):
+        # Creating an array with all the predictions
+        pred = np.argmax(prediction, axis=1)
+        true_labels = test_generator.classes
+
+        accuracy = accuracy_score(true_labels, pred)
+        f1 = f1_score(true_labels, pred, average='macro')
+        roc_auc = roc_auc_score(true_labels, pred)
+
+        prec, recall, _ = precision_recall_curve(true_labels, pred)
+        # Plotting the graph of Precision vs Recall
+        plt.figure(figsize=(15, 15))
+        plt.subplot(2, 2, 1)
+        plt.plot(prec, recall)
+        plt.title("Precision vs Recall")
+
+        # Add the F1 score as text annotation to the plots
+        plt.subplot(2, 2, 2)
+        plt.text(0.5, 0.5, f'F1 Score: {f1}\n\n ROC AUC: {roc_auc}\n\n Acc: {accuracy}\n\n',
+                 horizontalalignment='center', verticalalignment='center',
+                 transform=plt.gca().transAxes, fontsize=12)
+
+        base_dir = f"graphs"
+        if class_weights:
+            model_dir = os.path.join(base_dir, f"{base_model_name}_with_weights")
+        elif augment:
+            model_dir = os.path.join(base_dir, f"{base_model_name}_data_augmentation")
+        else:
+            model_dir = os.path.join(base_dir, f"{base_model_name}")
+
+        os.makedirs(model_dir, exist_ok=True)  # Create directories if they don't exist
+
+        filepath = os.path.join(model_dir, "precision_recall_graph.png")
+        print(filepath)
+        print(class_weights)
+        print(augment)
+        plt.savefig(filepath)
+        plt.show()
+        # Calculate and plot the confusion matrix for the best model
+        conf_mat = confusion_matrix(true_labels, pred)
+        class_labels = test_generator.class_indices
+        class_names = list(class_labels.keys())
+
+        plt.figure(figsize=(8, 8))
+        sns.heatmap(conf_mat, annot=True, fmt='d', cmap='Blues', cbar=False,
+                    xticklabels=class_names, yticklabels=class_names)
+        plt.title('Confusion Matrix')
+        plt.xlabel('Predicted')
+        plt.ylabel('Actual')
+
+        filepath = os.path.join(model_dir, "confusion_matrix.png")
+        plt.savefig(filepath)
+
+        plt.show()
+
+        print("\nAccuracy:", accuracy)
+        print("Precision:", precision_score(true_labels, pred))
+        print("Recall:", recall_score(true_labels, pred))
+        print("F1 Score:", f1)
+        print("ROC AUC Score: ", roc_auc)
+
+
+class PreTrainedClassifier(ImageClassifier):
     def __init__(self, input_shape, num_classes=2, activation="sigmoid", base_model_name="VGG16"):
         """
         Initializer for the ImageClassifier class.
@@ -25,6 +233,7 @@ class ImageClassifier:
             num_classes: The number of output classes (default: 2).
             activation: The activation function for the final layer (default: sigmoid).
         """
+        super().__init__(input_shape, num_classes, activation)
         self.input_shape = input_shape
         self.num_classes = num_classes
         self.activation = activation
@@ -66,184 +275,85 @@ class ImageClassifier:
         return model
 
     def train(self, train_data, validation_data, epochs, step_size_train, step_size_val, class_weights=True,
-              augment=True):
-        """
-        Trains the model on the provided data.
+              augment=True, base_model_name="VGG16"):
 
-        Args:
-            train_data: A Keras ImageDataGenerator object for training data.
-            validation_data: A Keras ImageDataGenerator object for validation data.
-            epochs: The number of training epochs.
-            class_weights: If TRUE, will calculate class weights.
-            augment: Was data augmentation performed in the image handler(default: True).
-            step_size_train:.
-            step_size_val:.
-
-        """
-        early_stop = EarlyStopping(monitor="val_loss", patience=13, restore_best_weights=True)
-
-        base_dir = f"models"
-        if class_weights:
-            # Calculate class weights
-            class_weight = compute_class_weight(
-                class_weight="balanced",
-                classes=np.unique(train_data.classes),
-                y=train_data.classes
-            )
-
-            weights = {0: class_weight[0], 1: class_weight[1]}
-            history = self.model.fit(
-                train_data,
-                steps_per_epoch=step_size_train,
-                epochs=epochs,
-                validation_data=validation_data,
-                validation_steps=step_size_val,
-                class_weight=weights,
-                callbacks=[early_stop],
-            )
-            model_dir = os.path.join(base_dir, f"{self.base_model_name}_with_weights")
-            filepath = os.path.join(model_dir, f"{self.base_model_name}_with_weights.h5")
-
-        else:
-            history = self.model.fit(
-                train_data,
-                steps_per_epoch=step_size_train,
-                epochs=epochs,
-                validation_data=validation_data,
-                validation_steps=step_size_val,
-                callbacks=[early_stop],
-            )
-            if augment:
-                model_dir = os.path.join(base_dir, f"{self.base_model_name}_data_augmentation")
-                filepath = os.path.join(model_dir, f"{self.base_model_name}_data_augmentation.h5")
-            else:
-                model_dir = os.path.join(base_dir, f"{self.base_model_name}")
-                filepath = os.path.join(model_dir, f"{self.base_model_name}.h5")
-
-        os.makedirs(model_dir, exist_ok=True)  # Create directories if they don't exist
-        self.model.save(filepath)
+        history = super().train(train_data, validation_data, epochs, step_size_train, step_size_val,
+                                class_weights=class_weights, augment=augment, base_model_name=self.base_model_name)
 
         return history
 
-    def evaluate(self, val_data, step_size):
+    def plot_training_performance(self, history, class_weights=True, augment=True, base_model_name="VGG16"):
+        return super().plot_training_performance(history, class_weights=class_weights,
+                                                 augment=augment, base_model_name=self.base_model_name)
+
+    def evaluation_metrics(self, prediction, test_generator, class_weights=True, augment=True, base_model_name="VGG16"):
         """
         Evaluates the model on the provided data.
 
         Args:
             val_data: A Keras ImageDataGenerator object for validation data.
-            step_size: A Keras ImageDataGenerator object for validation data.
+            step_size: Steps per epoch for validation data.
 
         Returns:
             The evaluation metrics from the model.
         """
-        return self.model.evaluate(val_data,
-                                   steps=step_size)
+        return super().evaluation_metrics(prediction, test_generator, class_weights=class_weights, augment=augment,
+                                          base_model_name=self.base_model_name)
 
-    def test(self, test_generator, step_size_test):
-        # Predicting the test data
-        prediction = self.model.predict(test_generator,
-                                        steps=step_size_test,
-                                        verbose=1)
-        return prediction
 
-    def plot_training_performance(self, history, class_weights=True, augment=True):
-        acc = history.history["accuracy"]
-        val_acc = history.history["val_accuracy"]
-        loss = history.history["loss"]
-        val_loss = history.history["val_loss"]
-        num_epochs = len(history.history['loss'])
+class CustomCNN(ImageClassifier):
+    def __init__(self, input_shape, num_classes=2, activation="sigmoid", kernel_size=(3,3)):
+        """
+        Initializer for the ImageClassifier class.
 
-        # Plotting how the validation and training accuracy was changing with the epochs when the model was training
-        plt.figure(figsize=(15, 15))
-        plt.subplot(2, 2, 1)
-        plt.plot(range(num_epochs), acc, label="Training Accuracy")
-        plt.plot(range(num_epochs), val_acc, label="Validation Accuracy")
-        plt.legend(loc="lower right")
-        plt.title("Training and Validation Accuracy")
+        Args:
+            input_shape: The input shape for the model (e.g., (120, 120, 3)).
+            num_classes: The number of output classes (default: 2).
+            activation: The activation function for the final layer (default: sigmoid).
+        """
+        super().__init__(input_shape, num_classes, activation)
+        self.input_shape = input_shape
+        self.num_classes = num_classes
+        self.activation = activation
+        self.kernel_size = kernel_size
+        self.model = self._build_model()
 
-        # Plotting how the validation and training loss was changing with the epochs when the model was training
-        plt.subplot(2, 2, 2)
-        plt.plot(range(num_epochs), loss, label="Training Loss")
-        plt.plot(range(num_epochs), val_loss, label="Validation Loss")
-        plt.legend(loc="upper right")
-        plt.title("Training and Validation Loss")
+    def _build_model(self):
 
-        # Add the F1 score as text annotation to the plots
-        plt.subplot(2, 2, 4)
-        plt.text(0.5, 0.5, f'Training Acc: {acc[0]}'
-                           f'\n\n Val Acc: {val_acc[0]}\n\n Training Loss: {loss[0]}'
-                           f'\n\n Val Loss: {val_loss[0]}\n\n',
-                 horizontalalignment='center', verticalalignment='center',
-                 transform=plt.gca().transAxes, fontsize=12)
+        # Creating a Sequential mode
+        model = Sequential()
+        model.add(Conv2D(32, self.kernel_size, padding="same", input_shape=self.input_shape + (3,)))
+        model.add(Activation("relu"))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
 
-        base_dir = f"graphs"
-        if class_weights:
-            model_dir = os.path.join(base_dir, f"{self.base_model_name}_with_weights")
-        elif augment:
-            model_dir = os.path.join(base_dir, f"{self.base_model_name}_data_augmentation")
-        else:
-            model_dir = os.path.join(base_dir, f"{self.base_model_name}")
+        model.add(Conv2D(64, self.kernel_size, padding="same"))
+        model.add(Activation("relu"))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
 
-        os.makedirs(model_dir, exist_ok=True)  # Create directories if they don't exist
-        filepath = os.path.join(model_dir, "training_validation_graphs.png")
+        model.add(Conv2D(128, self.kernel_size, padding="same"))
+        model.add(Activation("relu"))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
 
-        plt.savefig(filepath)
-        plt.show()
+        model.add(Flatten())
+        model.add(Dense(2, activation='sigmoid'))
+        model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 
-    def evaluation_metrics(self, prediction, test_generator, class_weights=True, augment=True):
-        # Creating an array with all the predictions
-        pred = np.argmax(prediction, axis=1)
-        true_labels = test_generator.classes
+        return model
 
-        accuracy = accuracy_score(true_labels, pred)
-        f1 = f1_score(true_labels, pred, average='macro')
-        roc_auc = roc_auc_score(true_labels, pred)
+    def train(self, train_data, validation_data, epochs, step_size_train, step_size_val, class_weights=True,
+              augment=True, base_model_name="custom_cnn"):
 
-        prec, recall, _ = precision_recall_curve(true_labels, pred)
-        # Plotting the graph of Precision vs Recall
-        plt.figure(figsize=(15, 15))
-        plt.subplot(2, 2, 1)
-        plt.plot(prec, recall)
-        plt.title("Precision vs Recall")
+        history = super().train(train_data, validation_data, epochs, step_size_train, step_size_val,
+                                class_weights=class_weights, augment=augment, base_model_name=base_model_name)
 
-        # Add the F1 score as text annotation to the plots
-        plt.subplot(2, 2, 2)
-        plt.text(0.5, 0.5, f'F1 Score: {f1}\n\n ROC AUC: {roc_auc} Acc: {accuracy}\n\n',
-                 horizontalalignment='center', verticalalignment='center',
-                 transform=plt.gca().transAxes, fontsize=12)
+        return history
 
-        base_dir = f"graphs"
-        if class_weights:
-            model_dir = os.path.join(base_dir, f"{self.base_model_name}_with_weights")
-        elif augment:
-            model_dir = os.path.join(base_dir, f"{self.base_model_name}_data_augmentation")
-        else:
-            model_dir = os.path.join(base_dir, f"{self.base_model_name}")
+    def plot_training_performance(self, history, class_weights=True, augment=True, base_model_name="custom_cnn"):
+        return super().plot_training_performance(history, class_weights=class_weights,
+                                                 augment=augment, base_model_name=base_model_name)
 
-        os.makedirs(model_dir, exist_ok=True)  # Create directories if they don't exist
+    def evaluation_metrics(self, prediction, test_generator, class_weights=True, augment=True,
+                           base_model_name="custom_cnn"):
 
-        filepath = os.path.join(model_dir, "precision_recall_graph.png")
-        plt.savefig(filepath)
-
-        # Calculate and plot the confusion matrix for the best model
-        conf_mat = confusion_matrix(true_labels, pred)
-        class_labels = test_generator.class_indices
-        class_names = list(class_labels.keys())
-
-        plt.figure(figsize=(8, 8))
-        sns.heatmap(conf_mat, annot=True, fmt='d', cmap='Blues', cbar=False,
-                    xticklabels=class_names, yticklabels=class_names)
-        plt.title('Confusion Matrix')
-        plt.xlabel('Predicted')
-        plt.ylabel('Actual')
-
-        filepath = os.path.join(model_dir, "confusion_matrix.png")
-        plt.savefig(filepath)
-
-        plt.show()
-
-        print("\nAccuracy:", accuracy)
-        print("Precision:", precision_score(true_labels, pred))
-        print("Recall:", recall_score(true_labels, pred))
-        print("F1 Score:", f1)
-        print("ROC AUC Score: ", roc_auc)
+        return super().evaluation_metrics(prediction, test_generator, class_weights=class_weights, augment=augment,
+                                          base_model_name=base_model_name)
