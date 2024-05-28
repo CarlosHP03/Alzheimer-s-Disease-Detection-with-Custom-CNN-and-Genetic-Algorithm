@@ -5,7 +5,6 @@ from model import PreTrainedClassifier
 EPOCHS = 15
 TARGET_SIZE = (120, 120)
 BATCH_SIZE = 32
-KERNEL_SIZE = (3, 3)
 MODEL = "ResNet50"
 AUGMENT = True
 CLASS_WEIGHTS = False
