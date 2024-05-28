@@ -195,8 +195,6 @@ class ImageClassifier:
 
         filepath = os.path.join(model_dir, "precision_recall_graph.png")
         print(filepath)
-        print(class_weights)
-        print(augment)
         plt.savefig(filepath)
         plt.show()
         # Calculate and plot the confusion matrix for the best model
