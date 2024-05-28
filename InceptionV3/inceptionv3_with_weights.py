@@ -1,11 +1,10 @@
 from image_data_handler import ImageDataHandler
-from model import ImageClassifier
+from model import PreTrainedClassifier
 
 # Define data paths, hyperparameters
 EPOCHS = 15
 TARGET_SIZE = (299, 299)
 BATCH_SIZE = 32
-KERNEL_SIZE = (3, 3)
 MODEL = "InceptionV3"
 AUGMENT = True
 CLASS_WEIGHTS = True
@@ -28,7 +27,7 @@ STEP_SIZE_VALID = valid_generator.n//valid_generator.batch_size
 STEP_SIZE_TEST = test_generator.n//test_generator.batch_size
 
 # Create the image classifier object
-model = ImageClassifier(TARGET_SIZE, num_classes=2, base_model_name=MODEL)
+model = PreTrainedClassifier(TARGET_SIZE, num_classes=2, base_model_name=MODEL)
 
 # Train the model
 history = model.train(train_generator, valid_generator, EPOCHS, STEP_SIZE_TRAIN, STEP_SIZE_VALID,
