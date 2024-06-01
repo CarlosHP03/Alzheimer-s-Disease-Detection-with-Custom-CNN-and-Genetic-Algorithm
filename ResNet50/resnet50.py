@@ -5,7 +5,9 @@ from model import PreTrainedClassifier
 EPOCHS = 15
 TARGET_SIZE = (120, 120)
 BATCH_SIZE = 32
+NUM_CLASSES = 2
 MODEL = "ResNet50"
+ACTIVATION_FUNCTION = "sigmoid"
 AUGMENT = False
 CLASS_WEIGHTS = False
 
@@ -27,17 +29,17 @@ STEP_SIZE_VALID = valid_generator.n//valid_generator.batch_size
 STEP_SIZE_TEST = test_generator.n//test_generator.batch_size
 
 # Create the image classifier object
-model = PreTrainedClassifier(TARGET_SIZE, num_classes=2, base_model_name=MODEL)
+model = PreTrainedClassifier(TARGET_SIZE, num_classes=NUM_CLASSES, activation=ACTIVATION_FUNCTION, model_name=MODEL,
+                             class_weight=CLASS_WEIGHTS, augment=AUGMENT)
 
 # Train the model
-history = model.train(train_generator, valid_generator, EPOCHS, STEP_SIZE_TRAIN, STEP_SIZE_VALID,
-                      class_weights=CLASS_WEIGHTS, augment=AUGMENT)
+history = model.train(train_generator, valid_generator, EPOCHS, STEP_SIZE_TRAIN, STEP_SIZE_VALID,)
 
 model.evaluate(valid_generator, STEP_SIZE_VALID)
 
-model.plot_training_performance(history, class_weights=CLASS_WEIGHTS, augment=AUGMENT)
+model.plot_training_performance(history)
 
 test_generator.reset()
 prediction = model.test(test_generator, STEP_SIZE_TEST)
 
-model.evaluation_metrics(prediction, test_generator, class_weights=CLASS_WEIGHTS, augment=AUGMENT)
+model.evaluation_metrics(prediction, test_generator)
