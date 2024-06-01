@@ -2,12 +2,15 @@ from image_data_handler import ImageDataHandler
 from model import CustomCNN
 
 # Define data paths, hyperparameters
-EPOCHS = 2
-TARGET_SIZE = (32, 32)
-KERNEL_SIZE = (3, 3)
+EPOCHS = 15
+TARGET_SIZE = (120, 120)
 BATCH_SIZE = 32
+NUM_CLASSES = 2
+KERNEL_SIZE = (3, 3)
+ACTIVATION_FUNCTION = "sigmoid"
 AUGMENT = True
 CLASS_WEIGHTS = True
+
 
 # Paths where the train images, test images and validation images are.
 TRAIN_PATH = "../../dataset/train"
@@ -26,17 +29,17 @@ STEP_SIZE_VALID = valid_generator.n//valid_generator.batch_size
 STEP_SIZE_TEST = test_generator.n//test_generator.batch_size
 
 # Create the image classifier object
-model = CustomCNN(input_shape=TARGET_SIZE, num_classes=2, kernel_size=KERNEL_SIZE)
+model = CustomCNN(input_shape=TARGET_SIZE, num_classes=NUM_CLASSES, activation=ACTIVATION_FUNCTION,
+                  class_weights=CLASS_WEIGHTS, augment=AUGMENT)
 
 # Train the model
-history = model.train(train_generator, valid_generator, EPOCHS, STEP_SIZE_TRAIN, STEP_SIZE_VALID,
-                      class_weights=CLASS_WEIGHTS, augment=AUGMENT)
+history = model.train(train_generator, valid_generator, EPOCHS, STEP_SIZE_TRAIN, STEP_SIZE_VALID)
 
 model.evaluate(valid_generator, STEP_SIZE_VALID)
 
-model.plot_training_performance(history, class_weights=CLASS_WEIGHTS, augment=AUGMENT)
+model.plot_training_performance(history)
 
 test_generator.reset()
 prediction = model.test(test_generator, STEP_SIZE_TEST)
 
-model.evaluation_metrics(prediction, test_generator, class_weights=CLASS_WEIGHTS, augment=AUGMENT)
+model.evaluation_metrics(prediction, test_generator)
