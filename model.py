@@ -16,7 +16,8 @@ class ImageClassifier:
     """
     This class defines a basic image classifier for training and evaluation.
     """
-    def __init__(self, input_shape, num_classes=2, activation="sigmoid"):
+    def __init__(self, input_shape, num_classes=2, activation="sigmoid", class_weights=True, augment=True,
+                 model_name="VGG16"):
         """
         Initializer for the base ImageClassifier class.
 
@@ -28,6 +29,9 @@ class ImageClassifier:
         self.input_shape = input_shape
         self.num_classes = num_classes
         self.activation = activation
+        self.class_weights = class_weights
+        self.augment = augment
+        self.model_name = model_name.lower()
         self.model = None  # Placeholder for the model
 
     def _build_model(self):
@@ -36,8 +40,7 @@ class ImageClassifier:
         """
         raise NotImplementedError("Subclasses must implement _build_model() method")
 
-    def train(self, train_data, validation_data, epochs, step_size_train, step_size_val, class_weights=True,
-              augment=True, base_model_name="VGG16"):
+    def train(self, train_data, validation_data, epochs, step_size_train, step_size_val):
         """
         Trains the model on the provided data.
 
@@ -54,7 +57,7 @@ class ImageClassifier:
         early_stop = EarlyStopping(monitor="val_loss", patience=13, restore_best_weights=True)
 
         base_dir = f"models"
-        if class_weights:
+        if self.class_weights:
             # Calculate class weights
             class_weight = compute_class_weight(
                 class_weight="balanced",
@@ -72,8 +75,8 @@ class ImageClassifier:
                 class_weight=weights,
                 callbacks=[early_stop],
             )
-            model_dir = os.path.join(base_dir, f"{base_model_name}_with_weights")
-            filepath = os.path.join(model_dir, f"{base_model_name}_with_weights.h5")
+            model_dir = os.path.join(base_dir, f"{self.model_name}_with_weights")
+            filepath = os.path.join(model_dir, f"{self.model_name}_with_weights.h5")
 
         else:
             history = self.model.fit(
@@ -84,12 +87,12 @@ class ImageClassifier:
                 validation_steps=step_size_val,
                 callbacks=[early_stop],
             )
-            if augment:
-                model_dir = os.path.join(base_dir, f"{base_model_name}_data_augmentation")
-                filepath = os.path.join(model_dir, f"{base_model_name}_data_augmentation.h5")
+            if self.augment:
+                model_dir = os.path.join(base_dir, f"{self.model_name}_data_augmentation")
+                filepath = os.path.join(model_dir, f"{self.model_name}_data_augmentation.h5")
             else:
-                model_dir = os.path.join(base_dir, f"{base_model_name}")
-                filepath = os.path.join(model_dir, f"{base_model_name}.h5")
+                model_dir = os.path.join(base_dir, f"{self.model_name}")
+                filepath = os.path.join(model_dir, f"{self.model_name}.h5")
 
         os.makedirs(model_dir, exist_ok=True)  # Create directories if they don't exist
         self.model.save(filepath)
@@ -117,7 +120,7 @@ class ImageClassifier:
                                         verbose=1)
         return prediction
 
-    def plot_training_performance(self, history, class_weights=True, augment=True, base_model_name="VGG16"):
+    def plot_training_performance(self, history):
         acc = history.history["accuracy"]
         val_acc = history.history["val_accuracy"]
         loss = history.history["loss"]
@@ -148,12 +151,12 @@ class ImageClassifier:
                  transform=plt.gca().transAxes, fontsize=12)
 
         base_dir = f"graphs"
-        if class_weights:
-            model_dir = os.path.join(base_dir, f"{base_model_name}_with_weights")
-        elif augment:
-            model_dir = os.path.join(base_dir, f"{base_model_name}_data_augmentation")
+        if self.class_weights:
+            model_dir = os.path.join(base_dir, f"{self.model_name}_with_weights")
+        elif self.augment:
+            model_dir = os.path.join(base_dir, f"{self.model_name}_data_augmentation")
         else:
-            model_dir = os.path.join(base_dir, f"{base_model_name}")
+            model_dir = os.path.join(base_dir, f"{self.model_name}")
 
         os.makedirs(model_dir, exist_ok=True)  # Create directories if they don't exist
         filepath = os.path.join(model_dir, "training_validation_graphs.png")
@@ -161,7 +164,7 @@ class ImageClassifier:
         plt.savefig(filepath)
         plt.show()
 
-    def evaluation_metrics(self, prediction, test_generator, class_weights=True, augment=True, base_model_name="VGG16"):
+    def evaluation_metrics(self, prediction, test_generator):
         # Creating an array with all the predictions
         pred = np.argmax(prediction, axis=1)
         true_labels = test_generator.classes
@@ -184,17 +187,16 @@ class ImageClassifier:
                  transform=plt.gca().transAxes, fontsize=12)
 
         base_dir = f"graphs"
-        if class_weights:
-            model_dir = os.path.join(base_dir, f"{base_model_name}_with_weights")
-        elif augment:
-            model_dir = os.path.join(base_dir, f"{base_model_name}_data_augmentation")
+        if self.class_weights:
+            model_dir = os.path.join(base_dir, f"{self.model_name}_with_weights")
+        elif self.augment:
+            model_dir = os.path.join(base_dir, f"{self.model_name}_data_augmentation")
         else:
-            model_dir = os.path.join(base_dir, f"{base_model_name}")
+            model_dir = os.path.join(base_dir, f"{self.model_name}")
 
         os.makedirs(model_dir, exist_ok=True)  # Create directories if they don't exist
 
         filepath = os.path.join(model_dir, "precision_recall_graph.png")
-        print(filepath)
         plt.savefig(filepath)
         plt.show()
         # Calculate and plot the confusion matrix for the best model
@@ -222,7 +224,7 @@ class ImageClassifier:
 
 
 class PreTrainedClassifier(ImageClassifier):
-    def __init__(self, input_shape, num_classes=2, activation="sigmoid", base_model_name="VGG16"):
+    def __init__(self, input_shape, num_classes, activation, class_weight, augment, model_name):
         """
         Initializer for the ImageClassifier class.
 
@@ -231,11 +233,7 @@ class PreTrainedClassifier(ImageClassifier):
             num_classes: The number of output classes (default: 2).
             activation: The activation function for the final layer (default: sigmoid).
         """
-        super().__init__(input_shape, num_classes, activation)
-        self.input_shape = input_shape
-        self.num_classes = num_classes
-        self.activation = activation
-        self.base_model_name = base_model_name.lower()  # Ensure case-insensitive selection
+        super().__init__(input_shape, num_classes, activation, class_weight, augment, model_name)
         self.model = self._build_model()
 
     def _build_model(self):
@@ -246,14 +244,14 @@ class PreTrainedClassifier(ImageClassifier):
             A compiled Keras model.
         """
         # Load the pre-trained base model based on the argument
-        if self.base_model_name == "vgg16":
+        if self.model_name == "vgg16":
             base_model = VGG16(weights="imagenet", include_top=False, input_shape=self.input_shape + (3,))
-        elif self.base_model_name == "inceptionv3":
+        elif self.model_name == "inceptionv3":
             base_model = InceptionV3(weights="imagenet", include_top=False, input_shape=self.input_shape + (3,))
-        elif self.base_model_name == "resnet50":
+        elif self.model_name == "resnet50":
             base_model = ResNet50(weights="imagenet", include_top=False, input_shape=self.input_shape + (3,))
         else:
-            raise ValueError(f"Unsupported base model name: {self.base_model_name}")
+            raise ValueError(f"Unsupported base model name: {self.model_name}")
 
         # Freeze the base model layers (optional for fine-tuning)
         for layer in base_model.layers:
@@ -272,35 +270,10 @@ class PreTrainedClassifier(ImageClassifier):
 
         return model
 
-    def train(self, train_data, validation_data, epochs, step_size_train, step_size_val, class_weights=True,
-              augment=True, base_model_name="VGG16"):
-
-        history = super().train(train_data, validation_data, epochs, step_size_train, step_size_val,
-                                class_weights=class_weights, augment=augment, base_model_name=self.base_model_name)
-
-        return history
-
-    def plot_training_performance(self, history, class_weights=True, augment=True, base_model_name="VGG16"):
-        return super().plot_training_performance(history, class_weights=class_weights,
-                                                 augment=augment, base_model_name=self.base_model_name)
-
-    def evaluation_metrics(self, prediction, test_generator, class_weights=True, augment=True, base_model_name="VGG16"):
-        """
-        Evaluates the model on the provided data.
-
-        Args:
-            val_data: A Keras ImageDataGenerator object for validation data.
-            step_size: Steps per epoch for validation data.
-
-        Returns:
-            The evaluation metrics from the model.
-        """
-        return super().evaluation_metrics(prediction, test_generator, class_weights=class_weights, augment=augment,
-                                          base_model_name=self.base_model_name)
-
 
 class CustomCNN(ImageClassifier):
-    def __init__(self, input_shape, num_classes=2, activation="sigmoid", kernel_size=(3,3)):
+    def __init__(self, input_shape, num_classes=2, activation="sigmoid", class_weights=True, augment=True,
+                 kernel_size=(3, 3)):
         """
         Initializer for the ImageClassifier class.
 
@@ -309,10 +282,8 @@ class CustomCNN(ImageClassifier):
             num_classes: The number of output classes (default: 2).
             activation: The activation function for the final layer (default: sigmoid).
         """
-        super().__init__(input_shape, num_classes, activation)
-        self.input_shape = input_shape
-        self.num_classes = num_classes
-        self.activation = activation
+        self.model_name = "custom_cnn"
+        super().__init__(input_shape, num_classes, activation, class_weights, augment, self.model_name)
         self.kernel_size = kernel_size
         self.model = self._build_model()
 
@@ -333,25 +304,7 @@ class CustomCNN(ImageClassifier):
         model.add(MaxPooling2D(pool_size=(2, 2)))
 
         model.add(Flatten())
-        model.add(Dense(2, activation='sigmoid'))
+        model.add(Dense(self.num_classes, activation=self.activation))
         model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 
         return model
-
-    def train(self, train_data, validation_data, epochs, step_size_train, step_size_val, class_weights=True,
-              augment=True, base_model_name="custom_cnn"):
-
-        history = super().train(train_data, validation_data, epochs, step_size_train, step_size_val,
-                                class_weights=class_weights, augment=augment, base_model_name=base_model_name)
-
-        return history
-
-    def plot_training_performance(self, history, class_weights=True, augment=True, base_model_name="custom_cnn"):
-        return super().plot_training_performance(history, class_weights=class_weights,
-                                                 augment=augment, base_model_name=base_model_name)
-
-    def evaluation_metrics(self, prediction, test_generator, class_weights=True, augment=True,
-                           base_model_name="custom_cnn"):
-
-        return super().evaluation_metrics(prediction, test_generator, class_weights=class_weights, augment=augment,
-                                          base_model_name=base_model_name)
