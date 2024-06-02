@@ -1,7 +1,7 @@
 from keras import Sequential
 from keras.applications import VGG16, InceptionV3, ResNet50
-from keras.layers import Dense, GlobalAveragePooling2D, Activation, Flatten, MaxPooling2D, Conv2D
-from keras.models import Model
+from keras.layers import Dense, GlobalAveragePooling2D, Activation, Flatten, MaxPooling2D, Conv2D, Input, Average
+from keras.models import Model, load_model
 from keras.callbacks import EarlyStopping
 import numpy as np
 from sklearn.utils import compute_class_weight
@@ -16,7 +16,7 @@ class ImageClassifier:
     """
     This class defines a basic image classifier for training and evaluation.
     """
-    def __init__(self, input_shape, num_classes=2, activation="sigmoid", class_weights=True, augment=True,
+    def __init__(self, input_shape=(120, 120), num_classes=2, activation="sigmoid", class_weights=True, augment=True,
                  model_name="VGG16"):
         """
         Initializer for the base ImageClassifier class.
@@ -48,8 +48,6 @@ class ImageClassifier:
             train_data: A Keras ImageDataGenerator object for training data.
             validation_data: A Keras ImageDataGenerator object for validation data.
             epochs: The number of training epochs.
-            class_weights: If TRUE, will calculate class weights.
-            augment: Was data augmentation performed in the image handler(default: True).
             step_size_train:.
             step_size_val:.
 
@@ -308,3 +306,102 @@ class CustomCNN(ImageClassifier):
         model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 
         return model
+
+
+class EnsembleModel(ImageClassifier):
+    def __init__(self, input_shape, model1_path, model2_path, model3_path, model_name):
+        """
+        Initializer for the ImageClassifier class.
+
+        Args:
+        """
+        super().__init__(input_shape=input_shape, model_name=model_name)
+        self.model1_path = model1_path
+        self.model2_path = model2_path
+        self.model3_path = model3_path
+        self.model = self._build_model()
+
+    def _build_model(self):
+
+        # Load the individual trained models
+        model_1 = load_model(self.model1_path)
+        model_1 = Model(inputs=model_1.inputs, outputs=model_1.outputs, name='name_of_model_1')
+
+        model_2 = load_model(self.model2_path)
+        model_2 = Model(inputs=model_2.inputs, outputs=model_2.outputs, name='name_of_model_2')
+
+        model_3 = load_model(self.model3_path)
+        model_3 = Model(inputs=model_3.inputs, outputs=model_3.outputs, name='name_of_model_3')
+
+        # Create a list of the individual models
+        models = [model_1, model_2, model_3]
+
+        # Input layer for the ensemble model
+        model_input = Input(shape=self.input_shape + (3,))
+
+        # Get the outputs of each individual model
+        model_outputs = [model(model_input) for model in models]
+
+        # Average the outputs to get the ensemble output
+        ensemble_output = Average()(model_outputs)
+
+        # Create the ensemble model
+        model = Model(inputs=model_input, outputs=ensemble_output, name='ensemble')
+
+        # Compile the ensemble model
+        model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+        return model
+
+    def evaluation_metrics(self, prediction, test_generator):
+        # Creating an array with all the predictions
+        pred = np.argmax(prediction, axis=1)
+        true_labels = test_generator.classes
+
+        accuracy = accuracy_score(true_labels, pred)
+        f1 = f1_score(true_labels, pred, average='macro')
+        roc_auc = roc_auc_score(true_labels, pred)
+
+        prec, recall, _ = precision_recall_curve(true_labels, pred)
+        # Plotting the graph of Precision vs Recall
+        plt.figure(figsize=(15, 15))
+        plt.subplot(2, 2, 1)
+        plt.plot(prec, recall)
+        plt.title("Precision vs Recall")
+
+        # Add the F1 score as text annotation to the plots
+        plt.subplot(2, 2, 2)
+        plt.text(0.5, 0.5, f'F1 Score: {f1}\n\n ROC AUC: {roc_auc}\n\n Acc: {accuracy}\n\n',
+                 horizontalalignment='center', verticalalignment='center',
+                 transform=plt.gca().transAxes, fontsize=12)
+
+        base_dir = f"graphs"
+
+        model_dir = os.path.join(base_dir, f"{self.model_name}")
+        os.makedirs(model_dir, exist_ok=True)  # Create directories if they don't exist
+
+        filepath = os.path.join(model_dir, "precision_recall_graph.png")
+        plt.savefig(filepath)
+        plt.show()
+        # Calculate and plot the confusion matrix for the best model
+        conf_mat = confusion_matrix(true_labels, pred)
+        class_labels = test_generator.class_indices
+        class_names = list(class_labels.keys())
+
+        plt.figure(figsize=(8, 8))
+        sns.heatmap(conf_mat, annot=True, fmt='d', cmap='Blues', cbar=False,
+                    xticklabels=class_names, yticklabels=class_names)
+        plt.title('Confusion Matrix')
+        plt.xlabel('Predicted')
+        plt.ylabel('Actual')
+
+        filepath = os.path.join(model_dir, "confusion_matrix.png")
+        plt.savefig(filepath)
+
+        plt.show()
+
+        print("\nAccuracy:", accuracy)
+        print("Precision:", precision_score(true_labels, pred))
+        print("Recall:", recall_score(true_labels, pred))
+        print("F1 Score:", f1)
+        print("ROC AUC Score: ", roc_auc)
