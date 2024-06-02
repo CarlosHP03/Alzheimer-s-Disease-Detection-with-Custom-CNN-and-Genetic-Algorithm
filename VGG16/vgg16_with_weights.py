@@ -3,7 +3,7 @@ from model import PreTrainedClassifier
 
 # Define data paths, hyperparameters
 EPOCHS = 15
-TARGET_SIZE = (120, 120)
+TARGET_SIZE = (299, 299)
 BATCH_SIZE = 32
 NUM_CLASSES = 2
 MODEL = "VGG16"
